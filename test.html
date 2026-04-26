@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>wacl test</title></head>
+<body>
+<pre id=out>loading...</pre>
+<script>
+var require = { toUrl: function(p) { return p; } };
+function define(name, factory) {
+  var mod = factory();
+  mod.onReady(function(tcl) {
+    try {
+      var r1 = tcl.Eval('expr 1+1');
+      var r2 = tcl.Eval('set x "hello world"; string toupper ');
+      document.getElementById('out').textContent =
+        'expr 1+1 = ' + r1 + '\nstring toupper = ' + r2 + '\nSUCCESS';
+    } catch(e) {
+      document.getElementById('out').textContent = 'ERROR: ' + e;
+    }
+  });
+}
+</script>
+<script src="wacl.js"></script>
+</body>
+</html>

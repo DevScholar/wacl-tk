@@ -36,6 +36,7 @@ define('tcl/wacl', function () {
   Module['print'] = function(txt) { console.log('wacl stdout: ' + txt); };
   Module['printErr'] = function(txt) { console.error('wacl stderr: ' + txt); };
   Module['filePackagePrefixURL'] = _currPath;
+  Module['locateFile'] = function(path) { return _currPath + path; };
   
   Module['instantiateWasm'] = function(imports, successCallback) {
     _wasmbly.then(function(wasmBinary) {
@@ -80,7 +81,11 @@ define('tcl/wacl', function () {
       },
      
       jswrap: function(fcn, returnType, argType) {
-        var fnPtr = Runtime.addFunction(fcn);
+        var typeMap = { 'void': 'v', 'int': 'i', 'double': 'd', 'float': 'f', 'string': 'i', 'number': 'i' };
+        var sig = (typeMap[returnType] || 'v');
+        var argTypes = argType ? argType.split(/\s+/) : [];
+        for (var i = 0; i < argTypes.length; i++) sig += (typeMap[argTypes[i]] || 'i');
+        var fnPtr = Module.addFunction(fcn, sig);
         return "::wacl::jscall " + fnPtr + " " + returnType + " " + argType;
       },
      

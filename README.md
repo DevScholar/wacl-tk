@@ -1,4 +1,66 @@
-# wacl
+# wacl-tk
+
+⚠️ This project is in Pre-Alpha stage.
+
+A fork of [wacl](https://github.com/ecky-l/wacl) (Tcl 8.6 for WebAssembly) extended with
+a Tk 8.6 build and a demo harness that runs real Tk programs in the browser.
+Tk's X11 calls are handled by the sibling [em-x11](../em-x11/) project — an
+Emscripten Xlib surface that maps them to a Canvas compositor.
+
+![tk-hello demo screenshot](./screenshots/button-window.png)
+
+## Tk demos (em-x11 composition)
+
+### Prerequisites
+
+- Emscripten SDK on `PATH` (`source emsdk_env.sh`)
+- Node.js 20+, pnpm 9+
+- make, autoconf, wget
+- A clone of `em-x11` at `../em-x11` (sibling directory)
+
+### 1 — Download source trees
+
+`tcl/` and `tk/` are vendor source downloads excluded from git. Run once
+after cloning:
+
+```
+$ bash setup.sh
+```
+
+### 2 — Build em-x11 (sibling project)
+
+```
+$ cd ../em-x11
+$ pnpm install
+$ pnpm build:native   # produces em-x11/build/artifacts/libemx11.a
+```
+
+### 3 — Build Tcl and Tk static archives
+
+```
+$ make config && make waclinstall   # produces jsbuild/lib/libtcl8.6.a
+$ make tkinstall                    # produces jsbuild/lib/libtk8.6.a
+```
+
+### 4 — Build and run the demos
+
+```
+$ pnpm install
+$ pnpm build:native   # links tk-hello.{js,wasm,data} into build/artifacts/tk-hello/
+$ pnpm dev            # Vite dev server; prints the demo URL
+```
+
+Open the URL printed by `pnpm dev` (default `http://localhost:5173/demos/tk-hello/`).
+Vite auto-discovers any `demos/<name>/index.html` entry and sets the COOP/COEP
+headers Emscripten needs for Asyncify.
+
+The demos embed Tcl+Tk statically into a standalone wasm binary per demo.
+They are independent of the upstream `wacl.js` bundle served by `test.html`.
+
+---
+
+## Original wacl
+
 
 ### A Tcl distribution for WebAssembly or Javascript
 
@@ -33,14 +95,6 @@ More extensions can easily be included and used. C extensions can be compiled wi
 
 But be aware that including extensions is a tradeoff: for the additional functionality you pay with a larger download size. The really useful tDOM extension for instance increases the Wacl distribution by not less than 400kB, which must be downloaded  to the users client when (s)he wants to run a wacl based application, and this can be painful with lower bandwidth. Thus it is better to limit the number of packages to what is necessary rather than to build a batteries included distribution which contains everything.
 
-### Getting excited
-You can try it out [here](https://ecky-l.github.io/wacl/). You can download the precompiled version with the index page to play on your own webpage by downloading the precompiled binary from [here](https://ecky-l.github.io/wacl/releases/wacl.zip). Both of these pages require a recent browser with webassembly support:
-
-* Mozilla Firefox >= 52.0
-* Google Chrome >= 57.0
-* Microsoft Edge (Windows 10 "Creators" update)
-* Opera
-
 ### Getting started
 Wacl will compile on a Unix/Linux environment with the following tools installed:
 
@@ -72,5 +126,3 @@ There is a target to recreate the patch, if you changed anything important in tc
 
 It downloads tcl-core (it not already present), extracts it and runs diff between 
 it and tcl/. The result is the patch that is applied above via "make tclprep"
-
-

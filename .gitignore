@@ -7,3 +7,10 @@ wacl.wasm
 /jsbuild/
 /library/
 /tcl/
+/tk/
+/ecky-l.github.io/
+
+# Demo build outputs (Node toolchain added for tk-hello and future Tk demos)
+/node_modules/
+/build/
+/dist/

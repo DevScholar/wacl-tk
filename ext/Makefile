@@ -44,8 +44,8 @@ tdomdistclean:
 	
 tcllib:
 	mkdir -p $(LIBRARYDIR)
-	cp -rf tcllib-$(TCLLIBVERSION)/modules/$(TCLLIBS) $(LIBRARYDIR)
-	find $(LIBRARYDIR)/$(TCLLIBS) -type f | grep -v tcl$$ | xargs rm -f
+	for m in json ncgi fileutil cmdline uri html javascript; do cp -rf tcllib-$(TCLLIBVERSION)/modules/$$m $(LIBRARYDIR); done
+	find $(LIBRARYDIR) -type f | grep -v '\.tcl$$' | xargs rm -f
 	
 tcllibprep:
 	wget -nc http://prdownloads.sourceforge.net/tcllib/tcllib-$(TCLLIBVERSION).tar.gz
