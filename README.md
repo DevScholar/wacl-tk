@@ -5,9 +5,10 @@
 A fork of [wacl](https://github.com/ecky-l/wacl) (Tcl 8.6 for WebAssembly) extended with
 a Tk 8.6 build and a demo harness that runs real Tk programs in the browser.
 Tk's X11 calls are handled by the sibling [em-x11](../em-x11/) project — an
-Emscripten Xlib surface that maps them to a Canvas compositor.
+Emscripten Xlib surface that maps them to a Canvas compositor, with widget
+input (keyboard, mouse, hover) wired end-to-end.
 
-![tk-hello demo screenshot](./screenshots/button-window.png)
+![tk-hello demo screenshot](./screenshots/counter.png)
 
 ## Tk demos (em-x11 composition)
 
@@ -52,7 +53,11 @@ $ pnpm dev            # Vite dev server; prints the demo URL
 
 Open the URL printed by `pnpm dev` (default `http://localhost:5173/demos/tk-hello/`).
 Vite auto-discovers any `demos/<name>/index.html` entry and sets the COOP/COEP
-headers Emscripten needs for Asyncify.
+headers that enable cross-origin isolation for Emscripten runtime features.
+
+Currently there is one demo: `tk-hello` — a Tk window with a label, entry,
+buttons, and a counter, demonstrating that keyboard input, mouse clicks,
+hover state, and focus transitions all work.
 
 The demos embed Tcl+Tk statically into a standalone wasm binary per demo.
 They are independent of the upstream `wacl.js` bundle served by `test.html`.
