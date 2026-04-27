@@ -143,28 +143,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Debug: probe each variable separately so one failure doesn't mask
-     * the others. Tcl_Eval on a multi-line block aborts at the first
-     * error and loses subsequent puts. */
-    const char *probes[] = {
-        "puts \"tcl_library=$tcl_library\"",
-        "puts \"auto_path=[expr {[info exists auto_path] ? $auto_path : {<unset>}}]\"",
-        "puts \"auto_index(tcl_findLibrary)="
-            "[expr {[info exists auto_index(tcl_findLibrary)] ? "
-            "$auto_index(tcl_findLibrary) : {<unset>}}]\"",
-        "puts \"glob /tcl: [lsort [glob -nocomplain /tcl/*]]\"",
-        NULL,
-    };
-    for (const char **p = probes; *p; p++) {
-        if (Tcl_Eval(interp, *p) != TCL_OK) {
-            fprintf(stderr, "probe failed (%s): %s\n",
-                    *p, Tcl_GetStringResult(interp));
-        }
-    }
-
-    /* If auto-load of tcl_findLibrary is broken (tclIndex not read,
-     * auto_path off), source auto.tcl directly to define the procs
-     * Tk_Init needs. Harmless if already defined. */
+    /* Tk_Init needs tcl_findLibrary. auto-load usually handles this via
+     * tclIndex, but source auto.tcl directly as a belt-and-braces guard. */
     if (Tcl_Eval(interp, "source /tcl/auto.tcl") != TCL_OK) {
         fprintf(stderr, "tk-hello: source auto.tcl: %s\n",
                 Tcl_GetStringResult(interp));
@@ -184,22 +164,43 @@ int main(int argc, char **argv) {
      * or has zero geometry, the fault is in window creation / geometry
      * propagation back from em-x11 to Tk. */
     const char *script =
-        "button .b -text {Hello, Tk!} -command {puts clicked}\n"
-        "pack .b -padx 20 -pady 20\n"
-        /* Full `update` (not `update idletasks`): Tk's realize / map
-         * happens inside the event-loop pump, not the idle queue. Using
-         * idletasks alone leaves the widget tree unrealized, which is
-         * what the earlier probes showed (ismapped=0, geometry=1x1+0+0).
-         * Full update drains events until idle, which means XMapWindow
-         * fires and MapNotify / ConfigureNotify come back. */
+        /* Title */
+        "label .title -text {Tk on WebAssembly} -font {Helvetica 14 bold} -pady 6\n"
+        "pack  .title -fill x\n"
+        "frame .sep -height 2 -relief sunken -bd 1\n"
+        "pack  .sep  -fill x -padx 8 -pady 2\n"
+
+        /* Input row */
+        "frame .row1\n"
+        "label  .row1.l -text {Name:} -width 8 -anchor e\n"
+        "entry  .row1.e -textvariable ::name -width 18\n"
+        "button .row1.b -text {Greet} -command {\n"
+        "    set m \"Hello, [expr {$::name eq {} ? {World} : $::name}]!\"\n"
+        "    .out configure -text $m\n"
+        "}\n"
+        "pack .row1.l .row1.e .row1.b -side left -padx 4 -pady 6\n"
+        "pack .row1\n"
+
+        /* Counter row */
+        "frame .row2\n"
+        "label  .row2.cl  -text {Clicks:} -width 8 -anchor e\n"
+        "label  .row2.cv  -textvariable ::clicks -width 4 -relief sunken -anchor e\n"
+        "button .row2.inc -text { + } -command {incr ::clicks}\n"
+        "button .row2.dec -text { - } -command {if {$::clicks > 0} {incr ::clicks -1}}\n"
+        "button .row2.rst -text {Reset} -command {set ::clicks 0}\n"
+        "pack .row2.cl .row2.cv .row2.inc .row2.dec .row2.rst -side left -padx 4 -pady 6\n"
+        "pack .row2\n"
+
+        /* Output label */
+        "label .out -text {(press Greet)} -relief groove -bd 2 -padx 8 -pady 4 -width 32\n"
+        "pack  .out -padx 12 -pady 8\n"
+
+        "set ::name {}\n"
+        "set ::clicks 0\n"
+
         "update\n"
-        "puts \"tk-hello: winfo exists .b = [winfo exists .b]\"\n"
         "puts \"tk-hello: winfo ismapped . = [winfo ismapped .]\"\n"
-        "puts \"tk-hello: winfo ismapped .b = [winfo ismapped .b]\"\n"
-        "puts \"tk-hello: winfo geometry . = [winfo geometry .]\"\n"
-        "puts \"tk-hello: winfo geometry .b = [winfo geometry .b]\"\n"
-        "puts \"tk-hello: winfo id . = [winfo id .]\"\n"
-        "puts \"tk-hello: winfo id .b = [winfo id .b]\"\n";
+        "puts \"tk-hello: winfo geometry . = [winfo geometry .]\"\n";
     if (Tcl_Eval(interp, script) != TCL_OK) {
         fprintf(stderr, "tk-hello: script error: %s\n",
                 Tcl_GetStringResult(interp));
@@ -207,14 +208,8 @@ int main(int argc, char **argv) {
     }
 
     printf("tk-hello: entering main loop\n"); fflush(stdout);
-    int iter = 0;
     while (Tk_GetNumMainWindows() > 0) {
         Tcl_DoOneEvent(0);
-        if (++iter == 1 || iter == 10 || iter == 100 || iter == 1000) {
-            printf("tk-hello: loop iter=%d windows=%d\n",
-                   iter, Tk_GetNumMainWindows());
-            fflush(stdout);
-        }
     }
     return 0;
 }
