@@ -17,7 +17,7 @@ input (keyboard, mouse, hover) wired end-to-end.
 - Emscripten SDK on `PATH` (`source emsdk_env.sh`)
 - Node.js 20+, pnpm 9+
 - make, autoconf, wget
-- A clone of `em-x11` at `../em-x11` (sibling directory)
+- A clone of `em-x11` at `[../em-x11](https://github.com/DevScholar/em-x11)` (sibling directory)
 
 ### 1 — Download source trees
 
