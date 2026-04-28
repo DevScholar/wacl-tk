@@ -56,7 +56,7 @@ export default defineConfig({
     },
     fs: {
       // Allow serving our own build outputs plus the sibling em-x11 tree
-      // (tk-hello/main.ts imports Host from ../../../em-x11/src/runtime/...).
+      // (tk-hello/main.ts imports Host from ../../../em-x11/src/host/...).
       // Vite resolves relative paths from project root; allow list is
       // path-prefix based, so listing the sibling dir is enough.
       allow: ['.', 'build', '../em-x11'],

@@ -6,7 +6,7 @@
  * the dev server.
  */
 
-import { Host } from '../../../em-x11/src/runtime/host.js';
+import { Host } from '../../../em-x11/src/host/index.js';
 
 const host = new Host();
 host.install();
