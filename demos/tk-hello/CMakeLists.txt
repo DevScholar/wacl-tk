@@ -21,7 +21,17 @@ set(TK_LIBRARY_DIR  "${CMAKE_SOURCE_DIR}/tk/library")
 set(EMX11_DIR      "${CMAKE_SOURCE_DIR}/../em-x11")
 set(EMX11_ARCHIVE  "${EMX11_DIR}/build/artifacts/libemx11.a")
 set(EMX11_INCLUDE  "${EMX11_DIR}/native/include")
-set(EMX11_JS_LIB   "${EMX11_DIR}/src/bindings/emx11.library.js")
+set(EMX11_JS_LIB_DIR "${EMX11_DIR}/src/bindings")
+set(EMX11_JS_LIBS
+    core.js
+    window.js
+    property.js
+    atom.js
+    draw.js
+    font.js
+    pixmap.js
+    clipboard.js
+)
 
 if(NOT EXISTS "${TCL_ARCHIVE}" OR NOT EXISTS "${TK_ARCHIVE}")
     message(STATUS "tk-hello: skipping -- ${TCL_ARCHIVE} or ${TK_ARCHIVE} missing. "
@@ -32,11 +42,17 @@ if(NOT EXISTS "${TCL_LIBRARY_DIR}/init.tcl" OR NOT EXISTS "${TK_LIBRARY_DIR}/tk.
     message(STATUS "tk-hello: skipping -- Tcl/Tk script library missing.")
     return()
 endif()
-if(NOT EXISTS "${EMX11_ARCHIVE}" OR NOT EXISTS "${EMX11_JS_LIB}")
-    message(STATUS "tk-hello: skipping -- em-x11 archive or JS bindings missing. "
+if(NOT EXISTS "${EMX11_ARCHIVE}")
+    message(STATUS "tk-hello: skipping -- em-x11 archive missing at ${EMX11_ARCHIVE}. "
                    "Run `pnpm build:native` in ../em-x11 first.")
     return()
 endif()
+foreach(_jslib IN LISTS EMX11_JS_LIBS)
+    if(NOT EXISTS "${EMX11_JS_LIB_DIR}/${_jslib}")
+        message(STATUS "tk-hello: skipping -- em-x11 JS binding missing: ${EMX11_JS_LIB_DIR}/${_jslib}")
+        return()
+    endif()
+endforeach()
 
 add_executable(tk-hello tk-hello.c)
 
@@ -63,7 +79,6 @@ target_compile_options(tk-hello PRIVATE ${WACL_TK_WARN_FLAGS})
 # link options. Since we consume the archive directly (no CMake target),
 # we respecify the JS library here.
 target_link_options(tk-hello PRIVATE
-    "SHELL:--js-library ${EMX11_JS_LIB}"
     "SHELL:-s MODULARIZE=1"
     "SHELL:-s EXPORT_ES6=1"
     "SHELL:-s EXPORT_NAME=createTkHelloModule"
@@ -77,6 +92,11 @@ target_link_options(tk-hello PRIVATE
     "SHELL:--preload-file ${TCL_LIBRARY_DIR}@/tcl"
     "SHELL:--preload-file ${TK_LIBRARY_DIR}@/tk"
 )
+foreach(_jslib IN LISTS EMX11_JS_LIBS)
+    target_link_options(tk-hello PRIVATE
+        "SHELL:--js-library ${EMX11_JS_LIB_DIR}/${_jslib}"
+    )
+endforeach()
 
 set_target_properties(tk-hello PROPERTIES
     SUFFIX ".js"
