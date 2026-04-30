@@ -129,6 +129,18 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
   });
   host.install();
 
+  /* Hide the canvas during boot so the user doesn't see the
+   * intermediate states (blank canvas → Tk root toplevel `.`'s
+   * default `#d9d9d9` background → first widgets paint) as a visible
+   * staircase. Microtasks run before the browser paints, so as long
+   * as we reveal before returning from loadWaclTk the page only
+   * frames the final state. We don't reset the property if the host
+   * page already overrode `visibility` -- that would clobber a
+   * caller who explicitly wants the canvas hidden longer. */
+  const canvasEl = host.canvas.element;
+  const restoreVisibility = canvasEl.style.visibility;
+  if (!restoreVisibility) canvasEl.style.visibility = 'hidden';
+
   /* Hand the print/printErr through Module overrides so Tcl's puts
    * actually lands where the caller asked. We capture the user
    * callbacks in mutable slots so setStdout/setStderr can swap them
@@ -207,6 +219,13 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
     }
     const result = c_result();
     if (rc !== 0) throw new TclError(result);
+    /* Drain pending idle handlers and paint events right away. Without
+     * this the result of a `pack` / `wm geometry` chain only paints on
+     * the next requestAnimationFrame tick (~16ms later, sometimes more
+     * if the browser deprioritises us). The drain is non-blocking
+     * (TCL_DONT_WAIT inside wacl_do_one_event) so we never re-enter
+     * Asyncify -- it just flushes whatever's already queued. */
+    c_do_one_event();
     return result;
   };
 
@@ -214,6 +233,7 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
     const rc = await c_eval(code);
     const result = c_result();
     if (rc !== 0) throw new TclError(result);
+    await c_do_one_event();
     return result;
   };
 
@@ -237,6 +257,8 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
   const canvas: WaclTkCanvas = {
     getCanvas2D: () => host.canvas.element,
   };
+
+  if (!restoreVisibility) canvasEl.style.visibility = '';
 
   return {
     version: versionTcl,

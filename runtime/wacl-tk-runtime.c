@@ -188,18 +188,29 @@ const char *wacl_set_var(const char *name, const char *value) {
     return Tcl_SetVar(g_interp, name, value, TCL_GLOBAL_ONLY);
 }
 
-/* Pump the event queue once with TCL_ALL_EVENTS|TCL_DONT_WAIT. JS
- * drives this on requestAnimationFrame so Tk's idle callbacks (the
- * ones that actually run geometry-manager redraws) fire even when
- * the page is otherwise idle. Returns nonzero if an event was
- * processed. We pin the flag combo here so the JS side doesn't have
+/* Pump the event queue until it's drained. JS drives this on
+ * requestAnimationFrame; one tick processes everything Tcl/Tk has
+ * outstanding (window realize, geometry, expose, idle redraws,
+ * after-timers due now) before yielding back to the browser. The
+ * original tight C loop did this implicitly at ~1ms per event; if
+ * we processed only one event per RAF tick we'd be at ~16ms each
+ * and a typical demo's 30+ widgets would visibly load over several
+ * seconds. We pin the flag combo here so the JS side doesn't have
  * to duplicate Tcl's bit definitions and get them wrong --
  * `TCL_ALL_EVENTS = ~TCL_DONT_WAIT` is a sign-extended ~0, which is
  * easy to misencode as 0x1f and silently drop TCL_IDLE_EVENTS (0x20). */
 EMSCRIPTEN_KEEPALIVE
 int wacl_do_one_event(void) {
     if (!g_interp) return 0;
-    return Tcl_DoOneEvent(TCL_ALL_EVENTS | TCL_DONT_WAIT);
+    int processed = 0;
+    /* Cap at 256 to bound a single tick: a runaway `after 0` chain
+     * shouldn't pin the main thread forever. 256 events is more than
+     * any normal widget realize round-trip needs. */
+    for (int i = 0; i < 256; i++) {
+        if (!Tcl_DoOneEvent(TCL_ALL_EVENTS | TCL_DONT_WAIT)) break;
+        processed++;
+    }
+    return processed;
 }
 
 EMSCRIPTEN_KEEPALIVE
