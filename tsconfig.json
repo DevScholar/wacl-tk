@@ -22,6 +22,6 @@
 
     "types": ["vite/client", "emscripten", "node"]
   },
-  "include": ["demos/**/*.ts", "vite.config.ts", "../em-x11/src/**/*.ts"],
+  "include": ["src/**/*.ts", "demos/**/*.ts", "vite.config.ts", "../em-x11/src/**/*.ts"],
   "exclude": ["node_modules", "dist", "build"]
 }

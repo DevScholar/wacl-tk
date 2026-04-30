@@ -21,4 +21,4 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts")
 
 set(WACL_TK_WARN_FLAGS -Wall -Wextra -Wno-unused-parameter)
 
-add_subdirectory(demos/tk-hello)
+add_subdirectory(runtime)
