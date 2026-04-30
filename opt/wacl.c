@@ -139,18 +139,18 @@ switch (argTypeN)\
   }
 
 
-static int 
-JsCallCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[]) 
+static int
+JsCallCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
 {
     int fcnPtr, retTypeN, argTypeN;
 
-    if (objc < 4 || objc > 5)
+    if (objc < 4)
     {
     Tcl_WrongNumArgs(
-                    interp, 
+                    interp,
                     1,
-                    objv, 
-                    "fcnPtr returnType argsTypes ?arg1 arg2 ...?");
+                    objv,
+                    "fcnPtr returnType argType ?arg1 arg2 ...?");
     return TCL_ERROR;
     }
 
@@ -166,21 +166,51 @@ JsCallCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST ob
     if (Tcl_GetIndexFromObj(interp, objv[3], _valTypes, "argument type", TCL_EXACT, &argTypeN) != TCL_OK)
     return TCL_ERROR;
 
-    if (argTypeN != EMTCL_VOID && objc != 5)
+    if (argTypeN == EMTCL_VOID && objc != 4)
     {
         Tcl_SetObjResult(interp, Tcl_NewStringObj("for void argument type there must be no argument", -1));
         return TCL_ERROR;
     }
-    
+
+    if (argTypeN != EMTCL_VOID && objc < 5)
+    {
+        Tcl_SetObjResult(interp, Tcl_NewStringObj("missing argument(s) for non-void argument type", -1));
+        return TCL_ERROR;
+    }
+
     if (argTypeN == EMTCL_VOID)
     {
         EXPAND_FCN_RET_TYPE( result = fcn(); )
     }
-    else
+    else if (objc == 5)
     {
+        /* Single-argument fast path (back-compat with original wacl). */
         EXPAND_FCN_ARG_TYPE( result = fcn(val); )
     }
-    
+    else
+    {
+        /* Multi-argument form: pack args as a Tcl list string and pass
+         * to a JS wrapper registered via jswrap(fn, retType, [argTypes]).
+         * The wrapper splits the list and coerces each element back to
+         * its declared type before calling the user function.
+         *
+         * Only string/array argType is allowed in the multi-arg form,
+         * because all wasm-side dispatch collapses to one fixed signature
+         * (string -> retType). */
+        if (argTypeN != EMTCL_STRING && argTypeN != EMTCL_ARRAY)
+        {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(
+                "multi-argument form requires argType 'string' or 'array' "
+                "(register the JS function with jswrap(fn, retType, [argTypes]))", -1));
+            return TCL_ERROR;
+        }
+        Tcl_Obj *packed = Tcl_NewListObj(objc - 4, (Tcl_Obj *CONST *)(objv + 4));
+        Tcl_IncrRefCount(packed);
+        const char *val = Tcl_GetString(packed);
+        EXPAND_FCN_RET_TYPE( result = fcn(val); , const char*)
+        Tcl_DecrRefCount(packed);
+    }
+
     return TCL_OK;
 }
 

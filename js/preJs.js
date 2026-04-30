@@ -78,8 +78,65 @@
       },
      
       jswrap: function(fcn, returnType, argType) {
-        var fnPtr = Runtime.addFunction(fcn);
-        return "::wacl::jscall " + fnPtr + " " + returnType + " " + argType;
+        // Back-compat: single-argument form, argType is a string.
+        if (typeof argType === 'string') {
+          var fnPtr = Runtime.addFunction(fcn);
+          return "::wacl::jscall " + fnPtr + " " + returnType + " " + argType;
+        }
+
+        // Multi-argument form: argType is an array of type names. Wrap fcn
+        // so wasm only ever sees the fixed signature (string -> returnType).
+        // The wrapper receives a packed Tcl-list string, splits it, coerces
+        // each element back to its declared type, then calls the user fn.
+        var argTypes = argType;
+        var coerce = function(s, t) {
+          switch (t) {
+            case 'int': case 'bool': return parseInt(s, 10);
+            case 'double':           return parseFloat(s);
+            default:                 return s;  // string / array
+          }
+        };
+        var wrapper = function(packedPtr) {
+          var packed = Module.UTF8ToString(packedPtr);
+          var parts = _Result._parseTclList(packed);
+          var args = new Array(argTypes.length);
+          for (var i = 0; i < argTypes.length; i++) {
+            args[i] = coerce(parts[i], argTypes[i]);
+          }
+          return fcn.apply(null, args);
+        };
+        var fnPtr = Runtime.addFunction(wrapper);
+        return "::wacl::jscall " + fnPtr + " " + returnType + " string";
+      },
+
+      // Tcl-list parser: splits a Tcl list string into an array of elements,
+      // honoring `{}` grouping and `\` escapes (the same syntax produced by
+      // Tcl_GetString on a Tcl_Obj built via Tcl_NewListObj).
+      _parseTclList: function(s) {
+        var out = [];
+        var i = 0, n = s.length;
+        while (i < n) {
+          while (i < n && (s[i] === ' ' || s[i] === '\t' || s[i] === '\n')) i++;
+          if (i >= n) break;
+          var token = '';
+          if (s[i] === '{') {
+            var depth = 1; i++;
+            while (i < n && depth > 0) {
+              var c = s[i];
+              if (c === '\\' && i + 1 < n) { token += s[i + 1]; i += 2; continue; }
+              if (c === '{') depth++;
+              else if (c === '}') { depth--; if (depth === 0) { i++; break; } }
+              token += c; i++;
+            }
+          } else {
+            while (i < n && s[i] !== ' ' && s[i] !== '\t' && s[i] !== '\n') {
+              if (s[i] === '\\' && i + 1 < n) { token += s[i + 1]; i += 2; continue; }
+              token += s[i]; i++;
+            }
+          }
+          out.push(token);
+        }
+        return out;
       },
      
       Eval: function(str) {

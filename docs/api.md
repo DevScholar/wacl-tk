@@ -204,23 +204,39 @@ Registers a JavaScript function in Emscripten's indirect call table and
 returns the corresponding `::wacl::jscall` command string. Store the
 result as a Tcl variable and call it like any other command.
 
+`argType` may be either:
+
+- a **string** (one of `void int bool double string array`) — single-argument
+  form, the original wacl behavior. Wasm signature is `argType → returnType`.
+- an **array** of type strings — multi-argument form. wacl-tk packs the Tcl
+  arguments into a Tcl-list string and the wrapper unpacks them on the JS
+  side. Wasm signature collapses to `string → returnType` regardless of arity.
+
 ```js
-// JS — run before or after loadWaclTk, but before the Tcl code that uses it
-const cmd = Module.wacl.jswrap(
+// Single-argument
+const greet = Module.wacl.jswrap(
   (name) => { console.log('Hello from Tcl:', name); return name.length; },
-  'int',    // return type
-  'string'  // argument type
+  'int',
+  'string'
 );
-wacl.globals.set('greetCmd', cmd);
+wacl.globals.set('greetCmd', greet);
+
+// Multi-argument
+const addCmd = Module.wacl.jswrap(
+  (a, b) => a + b,
+  'int',
+  ['int', 'int']     // ← array form
+);
+wacl.globals.set('addCmd', addCmd);
 ```
 
 ```tcl
 # Tcl
-set result [eval $::greetCmd "world"]
-# result == "5", and the browser console shows: Hello from Tcl: world
+set len [eval $::greetCmd "world"]    ;# 5
+set sum [eval $::addCmd 3 4]          ;# 7
 ```
 
-### `::wacl::jscall fcnPtr returnType argType ?arg?`
+### `::wacl::jscall fcnPtr returnType argType ?arg1 arg2 ...?`
 
 The Tcl command itself. Normally you never write this by hand — use
 `jswrap` on the JS side to produce the right invocation. The arguments:
@@ -229,19 +245,29 @@ The Tcl command itself. Normally you never write this by hand — use
 |--------------|----------|-------------|
 | `fcnPtr`     | integer  | Emscripten function-table index, as returned by `Runtime.addFunction`. |
 | `returnType` | string   | One of `void int bool double string array`. |
-| `argType`    | string   | One of `void int bool double string array`. |
-| `arg`        | value    | Required when `argType` is not `void`; omit otherwise. |
-
-Currently only **one argument** is supported. Functions with zero
-arguments use `argType void` and no `arg`.
+| `argType`    | string   | One of `void int bool double string array`. The wasm-side function signature. |
+| `arg…`       | values   | Zero args if `argType` is `void`; one arg for the single-argument form; multiple args for the packed-list form (which requires `argType` to be `string` or `array`). |
 
 ```tcl
 # zero-argument call
 ::wacl::jscall $ptr void void
 
-# one-argument call
+# single-argument call
 ::wacl::jscall $ptr int string "hello"
+
+# multi-argument call (jswrap normally produces this)
+::wacl::jscall $ptr int string 3 4
 ```
+
+#### Why multi-arg requires `argType string`/`array`
+
+Emscripten's `Runtime.addFunction` registers a function with a fixed wasm
+signature, and wasm's `call_indirect` traps if the runtime signature
+doesn't match the table entry. So variable arity is impossible at the wasm
+level. The multi-arg form sidesteps this by serialising all Tcl args as a
+single Tcl-list string; the wrapper produced by `jswrap` (array form)
+parses that list and coerces each element back to its declared type before
+invoking the user function.
 
 ### Type reference
 
