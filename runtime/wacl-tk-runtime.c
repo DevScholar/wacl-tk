@@ -4,7 +4,6 @@
  * the runtime stays alive (noExitRuntime). All evaluation happens through
  * cwrap'd entry points the JS loader calls:
  *
- *   wacl_init        -- create interp, run Tcl_Init / Tk_Init.
  *   wacl_eval        -- Tcl_Eval into a private result slot.
  *   wacl_result      -- last captured result (or errorInfo on TCL_ERROR).
  *   wacl_get_var     -- Tcl_GetVar in global scope.
@@ -108,7 +107,6 @@ static void install_browser_notifier(void) {
 
 static Tcl_Interp *g_interp   = NULL;
 static char       *g_result   = NULL;   /* malloc'd; result of last eval/get */
-static int         g_last_rc  = TCL_OK;
 
 static void set_result(const char *s) {
     if (g_result) { free(g_result); g_result = NULL; }
@@ -120,55 +118,17 @@ static void set_result(const char *s) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int wacl_init(void) {
-    if (g_interp) return 0;
-
-    install_browser_notifier();
-
-    setenv("TCL_LIBRARY", "/tcl", 1);
-    setenv("TK_LIBRARY",  "/tk",  1);
-    setenv("DISPLAY",     ":0",   1);
-
-    Tcl_FindExecutable("wacl-tk-runtime");
-    g_interp = Tcl_CreateInterp();
-    if (!g_interp) { set_result("Tcl_CreateInterp failed"); return 1; }
-
-    if (Tcl_Init(g_interp) != TCL_OK) {
-        set_result(Tcl_GetStringResult(g_interp));
-        return 1;
-    }
-
-    /* Belt-and-braces: source auto.tcl so tcl_findLibrary is loaded
-     * before Tk_Init asks for it. */
-    Tcl_Eval(g_interp, "catch {source /tcl/auto.tcl}");
-
-    if (Tk_Init(g_interp) != TCL_OK) {
-        set_result(Tcl_GetStringResult(g_interp));
-        return 1;
-    }
-
-    /* Force one update so Tk's main window realises before the first
-     * user eval has a chance to pack widgets. Without this, the first
-     * `pack` call against `.` runs before the wrapper is mapped and
-     * the toplevel paints with stale geometry. */
-    Tcl_Eval(g_interp, "update");
-    set_result("");
-    g_last_rc = TCL_OK;
-    return 0;
-}
-
-EMSCRIPTEN_KEEPALIVE
 int wacl_eval(const char *code) {
     if (!g_interp) { set_result("wacl: interp not initialised"); return TCL_ERROR; }
-    g_last_rc = Tcl_Eval(g_interp, code);
-    if (g_last_rc == TCL_OK) {
+    int rc = Tcl_Eval(g_interp, code);
+    if (rc == TCL_OK) {
         set_result(Tcl_GetStringResult(g_interp));
     } else {
         /* Match Pyodide's PythonError: include the traceback (errorInfo). */
         const char *info = Tcl_GetVar(g_interp, "errorInfo", TCL_GLOBAL_ONLY);
         set_result(info ? info : Tcl_GetStringResult(g_interp));
     }
-    return g_last_rc;
+    return rc;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -213,21 +173,46 @@ int wacl_do_one_event(void) {
     return processed;
 }
 
-EMSCRIPTEN_KEEPALIVE
-int wacl_main_windows(void) {
-    return Tk_GetNumMainWindows();
-}
-
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
-    /* Initialise eagerly. The JS loader calls wacl_init again as a
-     * no-op for the result-code, but doing the work here means the
-     * loader's first wacl_eval is ready immediately. */
-    if (wacl_init() != 0) {
-        fprintf(stderr, "wacl-tk-runtime: init failed: %s\n", wacl_result());
+
+    install_browser_notifier();
+
+    setenv("TCL_LIBRARY", "/tcl", 1);
+    setenv("TK_LIBRARY",  "/tk",  1);
+    setenv("DISPLAY",     ":0",   1);
+
+    Tcl_FindExecutable("wacl-tk-runtime");
+    g_interp = Tcl_CreateInterp();
+    if (!g_interp) {
+        fprintf(stderr, "wacl-tk-runtime: Tcl_CreateInterp failed\n");
         return 1;
     }
-    /* Return immediately; Module.noExitRuntime keeps the runtime alive
-     * so wacl_eval / wacl_do_one_event remain callable from JS. */
+
+    if (Tcl_Init(g_interp) != TCL_OK) {
+        fprintf(stderr, "wacl-tk-runtime: Tcl_Init failed: %s\n",
+                Tcl_GetStringResult(g_interp));
+        return 1;
+    }
+
+    /* Belt-and-braces: source auto.tcl so tcl_findLibrary is loaded
+     * before Tk_Init asks for it. */
+    Tcl_Eval(g_interp, "catch {source /tcl/auto.tcl}");
+
+    if (Tk_Init(g_interp) != TCL_OK) {
+        fprintf(stderr, "wacl-tk-runtime: Tk_Init failed: %s\n",
+                Tcl_GetStringResult(g_interp));
+        return 1;
+    }
+
+    /* Force one update so Tk's main window realises before the first
+     * user eval has a chance to pack widgets. Without this, the first
+     * `pack` call against `.` runs before the wrapper is mapped and
+     * the toplevel paints with stale geometry. */
+    Tcl_Eval(g_interp, "update");
+    set_result("");
+
+    /* Module.noExitRuntime keeps the runtime alive after this returns
+     * so the cwrap'd entry points remain callable. */
     return 0;
 }

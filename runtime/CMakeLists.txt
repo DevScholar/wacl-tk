@@ -11,20 +11,14 @@ set(TK_ARCHIVE  "${WACL_TK_DIR}/lib/libtk8.6.a")
 set(TCL_LIBRARY_DIR "${CMAKE_SOURCE_DIR}/tcl/library")
 set(TK_LIBRARY_DIR  "${CMAKE_SOURCE_DIR}/tk/library")
 
-set(EMX11_DIR        "${CMAKE_SOURCE_DIR}/../em-x11")
-set(EMX11_ARCHIVE    "${EMX11_DIR}/build/artifacts/libemx11.a")
-set(EMX11_INCLUDE    "${EMX11_DIR}/native/include")
-set(EMX11_JS_LIB_DIR "${EMX11_DIR}/src/bindings")
-set(EMX11_JS_LIBS
-    core.js
-    window.js
-    property.js
-    atom.js
-    draw.js
-    font.js
-    pixmap.js
-    clipboard.js
-)
+set(EMX11_DIR     "${CMAKE_SOURCE_DIR}/../em-x11")
+set(EMX11_ARCHIVE "${EMX11_DIR}/build/artifacts/libemx11.a")
+set(EMX11_INCLUDE "${EMX11_DIR}/native/include")
+
+# em-x11's JS bridges are now embedded in libemx11.a via EM_JS (see
+# em-x11/native/src/bridges.c). No --js-library wiring needed: the
+# archive carries its own __em_js__* data symbols that emcc's post-link
+# pass picks up. Keep the prereq guards on the archive itself.
 
 if(NOT EXISTS "${TCL_ARCHIVE}" OR NOT EXISTS "${TK_ARCHIVE}")
     message(STATUS "wacl-tk-runtime: skipping -- ${TCL_ARCHIVE} or ${TK_ARCHIVE} missing.")
@@ -38,12 +32,6 @@ if(NOT EXISTS "${EMX11_ARCHIVE}")
     message(STATUS "wacl-tk-runtime: skipping -- em-x11 archive missing at ${EMX11_ARCHIVE}.")
     return()
 endif()
-foreach(_jslib IN LISTS EMX11_JS_LIBS)
-    if(NOT EXISTS "${EMX11_JS_LIB_DIR}/${_jslib}")
-        message(STATUS "wacl-tk-runtime: skipping -- em-x11 JS binding missing: ${_jslib}")
-        return()
-    endif()
-endforeach()
 
 add_executable(wacl-tk-runtime wacl-tk-runtime.c)
 
@@ -70,16 +58,11 @@ target_link_options(wacl-tk-runtime PRIVATE
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s FORCE_FILESYSTEM=1"
     "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','FS','stringToUTF8','lengthBytesUTF8']"
-    "SHELL:-s EXPORTED_FUNCTIONS=['_main','_wacl_init','_wacl_eval','_wacl_result','_wacl_get_var','_wacl_set_var','_wacl_do_one_event','_wacl_main_windows','_emx11_push_button_event','_emx11_push_motion_event','_emx11_push_key_event','_emx11_push_expose_event','_emx11_push_map_request','_malloc','_free']"
+    "SHELL:-s EXPORTED_FUNCTIONS=['_main','_wacl_eval','_wacl_result','_wacl_get_var','_wacl_set_var','_wacl_do_one_event','_emx11_push_button_event','_emx11_push_motion_event','_emx11_push_key_event','_emx11_push_expose_event','_emx11_push_map_request','_emx11_push_reparent_notify','_malloc','_free']"
     "SHELL:-Wl,--error-limit=0"
     "SHELL:--preload-file ${TCL_LIBRARY_DIR}@/tcl"
     "SHELL:--preload-file ${TK_LIBRARY_DIR}@/tk"
 )
-foreach(_jslib IN LISTS EMX11_JS_LIBS)
-    target_link_options(wacl-tk-runtime PRIVATE
-        "SHELL:--js-library ${EMX11_JS_LIB_DIR}/${_jslib}"
-    )
-endforeach()
 
 set_target_properties(wacl-tk-runtime PROPERTIES
     SUFFIX ".js"

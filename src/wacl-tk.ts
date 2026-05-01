@@ -26,12 +26,12 @@ import type { EmscriptenModule } from '../../em-x11/src/types/emscripten.js';
 /* ---------------- Errors ---------------- */
 
 /** Thrown by runTcl/runTclAsync when the script returns TCL_ERROR.
- *  Mirrors Pyodide's PythonError. The message contains the value of
- *  Tcl's $errorInfo (the equivalent of a Python traceback). */
+ *  Mirrors Pyodide's PythonError. The message is the value of Tcl's
+ *  $errorInfo (the equivalent of a Python traceback). */
 export class TclError extends Error {
-  override name = 'TclError';
-  constructor(public readonly errorInfo: string) {
-    super(errorInfo);
+  constructor(message: string) {
+    super(message);
+    this.name = 'TclError';
   }
 }
 
@@ -129,18 +129,6 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
   });
   host.install();
 
-  /* Hide the canvas during boot so the user doesn't see the
-   * intermediate states (blank canvas → Tk root toplevel `.`'s
-   * default `#d9d9d9` background → first widgets paint) as a visible
-   * staircase. Microtasks run before the browser paints, so as long
-   * as we reveal before returning from loadWaclTk the page only
-   * frames the final state. We don't reset the property if the host
-   * page already overrode `visibility` -- that would clobber a
-   * caller who explicitly wants the canvas hidden longer. */
-  const canvasEl = host.canvas.element;
-  const restoreVisibility = canvasEl.style.visibility;
-  if (!restoreVisibility) canvasEl.style.visibility = 'hidden';
-
   /* Hand the print/printErr through Module overrides so Tcl's puts
    * actually lands where the caller asked. We capture the user
    * callbacks in mutable slots so setStdout/setStderr can swap them
@@ -173,31 +161,36 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
 
   /* ASYNCIFY-enabled wasm: every imported call returns either a value
    * (when no emscripten_sleep was hit) or a Promise (when it was).
-   * We must serialise calls -- two parallel cwrap invocations would
-   * stomp on the same Asyncify state. A single-slot Promise chain
-   * keeps everything well-ordered without any user-visible API. */
+   * Asyncify supports ONE unwind at a time, global to the wasm instance,
+   * so two parallel cwrap invocations would stomp on each other's
+   * snapshot. A single-slot Promise chain serialises everything; the
+   * `asyncifyBusy` flag is set while a queued call is mid-Promise so
+   * the sync runTcl path can detect that the previous unwind hasn't
+   * resumed yet and refuse to re-enter rather than corrupt the stack. */
   let chain: Promise<unknown> = Promise.resolve();
+  let asyncifyBusy = false;
   const queue = <T>(fn: () => T | Promise<T>): Promise<T> => {
-    const next = chain.then(fn);
+    const next = chain.then(async () => {
+      asyncifyBusy = true;
+      try {
+        return await fn();
+      } finally {
+        asyncifyBusy = false;
+      }
+    });
     chain = next.catch(() => undefined);
     return next;
   };
 
   /* Drive the Tk event loop on requestAnimationFrame so timer/expose/
    * input events keep flowing while no user eval is pending. The pump
-   * itself queues onto the same chain, so it'll never run during a
-   * script -- it just fills the gaps. */
-  const startPump = () => {
-    let stopped = false;
-    const tick = () => {
-      if (stopped) return;
-      void queue(() => c_do_one_event());
-      requestAnimationFrame(tick);
-    };
+   * queues onto the same chain, so it never runs concurrently with a
+   * user eval -- it just fills the gaps. */
+  const tick = () => {
+    void queue(() => c_do_one_event());
     requestAnimationFrame(tick);
-    return () => { stopped = true; };
   };
-  startPump();
+  requestAnimationFrame(tick);
 
   /* Read tclversion / tk_version through the same path so we get
    * whatever the linked archives report. */
@@ -205,13 +198,22 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
   const versionTk  = c_get_var('tk_version')  ?? '';
 
   const runOnce = (code: string): string => {
+    if (asyncifyBusy) {
+      throw new Error(
+        'wacl-tk: a previous async Tcl call has not finished unwinding ' +
+        '(Asyncify supports one unwind at a time). Use runTclAsync(...) ' +
+        'or await an in-flight runTclAsync before calling runTcl.',
+      );
+    }
     /* If the eval doesn't yield, cwrap returns a number synchronously
-     * and we can return immediately. If it yields, we still synchronously
-     * return -- but the result reflects state-up-to-that-point and any
-     * thrown TCL_ERROR will show up on the next tick. For scripts that
-     * yield (vwait/update), use runTclAsync. */
+     * and we can return immediately. If it yields (vwait/update),
+     * Asyncify is now mid-unwind with no way for sync code to resume
+     * it -- throw so the caller switches to runTclAsync. */
     const rc = c_eval(code);
     if (rc instanceof Promise) {
+      /* Park the in-flight unwind on the chain so it eventually
+       * resumes; otherwise the next queued call would race it. */
+      chain = chain.then(() => rc).catch(() => undefined);
       throw new Error(
         'wacl-tk: runTcl saw an async script (it called vwait/update). ' +
         'Use runTclAsync(...) instead.',
@@ -223,9 +225,13 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
      * this the result of a `pack` / `wm geometry` chain only paints on
      * the next requestAnimationFrame tick (~16ms later, sometimes more
      * if the browser deprioritises us). The drain is non-blocking
-     * (TCL_DONT_WAIT inside wacl_do_one_event) so we never re-enter
-     * Asyncify -- it just flushes whatever's already queued. */
-    c_do_one_event();
+     * (TCL_DONT_WAIT inside wacl_do_one_event); if it returns a
+     * Promise, the Tk pump yielded and we just park it on the chain so
+     * the next sync runTcl will see asyncifyBusy and bail clearly. */
+    const drained = c_do_one_event();
+    if (drained instanceof Promise) {
+      chain = chain.then(() => drained).catch(() => undefined);
+    }
     return result;
   };
 
@@ -258,23 +264,13 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
     getCanvas2D: () => host.canvas.element,
   };
 
-  if (!restoreVisibility) canvasEl.style.visibility = '';
-
   return {
     version: versionTcl,
     tkVersion: versionTk,
     FS: (mod as unknown as { FS: typeof FS }).FS,
     host,
     module: mod,
-    runTcl: (code) => {
-      /* runTcl is the simple sync path. Most scripts (widget creation,
-       * variable sets, expression eval) finish without yielding. */
-      // The pump may have a do-one-event in flight; flush by queueing
-      // through the chain but blocking is impossible from sync code.
-      // Users who hit the Promise branch get a clear error directing
-      // them to runTclAsync.
-      return runOnce(code);
-    },
+    runTcl: (code) => runOnce(code),
     runTclAsync: (code) => queue(() => runOnceAsync(code)),
     globals,
     canvas,

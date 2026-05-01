@@ -33,7 +33,9 @@ pnpm build:native
 
 # Run
 
-Use this command to run: `pnpm dev`
+```bash
+pnpm dev
+```
 
 # Documentation
 
