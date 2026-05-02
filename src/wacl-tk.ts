@@ -200,17 +200,7 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
       const deadline = performance.now() + 8;
       while (true) {
         const r = c_do_one_event();
-        const stats = ((globalThis as any).__wacltk_pump__ ??= { sync: 0, async: 0, asyncMs: 0 });
-        let n: number;
-        if (r instanceof Promise) {
-          stats.async++;
-          const a0 = performance.now();
-          n = await r;
-          stats.asyncMs += performance.now() - a0;
-        } else {
-          stats.sync++;
-          n = r;
-        }
+        const n = r instanceof Promise ? await r : r;
         if (n === 0 || performance.now() >= deadline) return;
       }
     });

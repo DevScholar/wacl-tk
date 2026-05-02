@@ -6,28 +6,7 @@
 
 import { loadWaclTk } from '../../src/wacl-tk.js';
 
-const t0 = performance.now();
-
-(() => {
-  const orig = window.setTimeout;
-  const log: { ms: number; delay: number; stack?: string }[] = [];
-  (window as any).__stcounts__ = log;
-  let bigStackCaptured = 0;
-  (window as any).setTimeout = ((fn: any, ms?: number, ...rest: any[]) => {
-    const now = performance.now() - t0;
-    log.push({ ms: now, delay: ms ?? 0 });
-    if ((ms ?? 0) > 100 && bigStackCaptured < 1) {
-      bigStackCaptured++;
-      console.log(`[BIG sleep ms=${ms} @${now.toFixed(0)}ms]`);
-      console.log(new Error().stack);
-    }
-    return orig(fn as any, ms as any, ...rest);
-  }) as any;
-})();
-
 const wacl = await loadWaclTk();
-const t1 = performance.now();
-console.log(`tk-hello: loadWaclTk took ${(t1 - t0).toFixed(0)}ms`);
 
 wacl.runTcl(`
   label .title -text {Tk on WebAssembly} -font {Helvetica 14 bold} -pady 6
@@ -73,43 +52,5 @@ wacl.runTcl(`
   set ::name {}
   set ::clicks 0
 `);
-const t2 = performance.now();
-console.log(`tk-hello: runTcl took ${(t2 - t1).toFixed(0)}ms`);
-
-queueMicrotask(() => {
-  console.log(`tk-hello: first microtask at ${(performance.now() - t0).toFixed(0)}ms`);
-});
-setTimeout(() => {
-  console.log(`tk-hello: first setTimeout(0) at ${(performance.now() - t0).toFixed(0)}ms`);
-}, 0);
-requestAnimationFrame(() => {
-  const t4 = performance.now();
-  console.log(`tk-hello: first rAF after init at ${(t4 - t0).toFixed(0)}ms from start`);
-  const ps = (globalThis as any).__wacltk_pump__;
-  if (ps) {
-    console.log(
-      `tk-hello: pump stats — sync ${ps.sync}, async ${ps.async} (in ${ps.asyncMs.toFixed(0)}ms)`,
-    );
-  }
-  const sts = (globalThis as any).__stcounts__ as { ms: number; delay: number }[];
-  if (sts) {
-    const total = sts.length;
-    const before1s = sts.filter((s) => s.ms < 1000).length;
-    const _1to2 = sts.filter((s) => s.ms >= 1000 && s.ms < 2000).length;
-    const _2to3 = sts.filter((s) => s.ms >= 2000 && s.ms < 3000).length;
-    const _3to4 = sts.filter((s) => s.ms >= 3000 && s.ms < 4000).length;
-    console.log(
-      `tk-hello: setTimeout calls — total ${total}; <1s ${before1s}, 1-2s ${_1to2}, 2-3s ${_2to3}, 3-4s ${_3to4}`,
-    );
-  }
-});
 
 console.log(`tk-hello: Tcl ${wacl.version} / Tk ${wacl.tkVersion} ready`);
-console.log(`tk-hello: clicks = ${wacl.globals.get('clicks')}`);
-const fs = (globalThis as any).__emx11_fontStats__;
-if (fs) {
-  console.log(
-    `tk-hello: font measure stats — font ${fs.fontHits}/${fs.fontCalls} hits in ${fs.fontMs.toFixed(1)}ms; ` +
-    `text ${fs.textHits}/${fs.textCalls} hits in ${fs.textMs.toFixed(1)}ms`,
-  );
-}
