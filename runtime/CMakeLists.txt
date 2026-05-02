@@ -54,6 +54,7 @@ target_link_options(wacl-tk-runtime PRIVATE
     "SHELL:-s EXPORT_ES6=1"
     "SHELL:-s EXPORT_NAME=createWaclTkRuntime"
     "SHELL:-s ASYNCIFY=1"
+    "SHELL:--profiling-funcs"
     "SHELL:-s ENVIRONMENT=web"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s FORCE_FILESYSTEM=1"

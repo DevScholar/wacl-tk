@@ -185,9 +185,35 @@ export async function loadWaclTk(config: WaclTkConfig = {}): Promise<WaclTkAPI> 
   /* Drive the Tk event loop on requestAnimationFrame so timer/expose/
    * input events keep flowing while no user eval is pending. The pump
    * queues onto the same chain, so it never runs concurrently with a
-   * user eval -- it just fills the gaps. */
+   * user eval -- it just fills the gaps.
+   *
+   * Per tick we drain pending events up to a wall-clock budget. Each
+   * c_do_one_event() call may either return a number sync, or unwind
+   * via Asyncify and return a Promise. We await the Promise inline so
+   * the chain stays a single in-flight task: that lets us keep pumping
+   * inside the same tick. The earlier "park promise on chain and exit"
+   * pattern degraded into one-event-per-frame whenever Tk's notifier
+   * yielded (which is most events), stretching widget realize/map to
+   * multiple seconds. */
   const tick = () => {
-    void queue(() => c_do_one_event());
+    void queue(async () => {
+      const deadline = performance.now() + 8;
+      while (true) {
+        const r = c_do_one_event();
+        const stats = ((globalThis as any).__wacltk_pump__ ??= { sync: 0, async: 0, asyncMs: 0 });
+        let n: number;
+        if (r instanceof Promise) {
+          stats.async++;
+          const a0 = performance.now();
+          n = await r;
+          stats.asyncMs += performance.now() - a0;
+        } else {
+          stats.sync++;
+          n = r;
+        }
+        if (n === 0 || performance.now() >= deadline) return;
+      }
+    });
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);

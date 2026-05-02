@@ -68,12 +68,20 @@ tkprep:
 tkconfig:
 	@test -d "$(EMX11_INCLUDES)/X11" || \
 		(echo "em-x11 headers not found at $(EMX11_INCLUDES)/X11"; exit 1)
-	cd tk/unix && emconfigure ./configure --prefix=$(CURDIR)/$(INSTALLDIR) \
+	chmod +x scripts/xft-config
+	cd tk/unix && \
+		PATH="$(CURDIR)/scripts:$$PATH" \
+		EMX11_INCLUDES="$(EMX11_INCLUDES)" \
+		EMX11_LIBDIR="$(EMX11_LIBDIR)" \
+		ac_cv_lib_Xft_XftFontOpen=yes \
+		ac_cv_lib_fontconfig_FcFontSort=no \
+		cross_compiling=yes \
+		emconfigure ./configure --prefix=$(CURDIR)/$(INSTALLDIR) \
+		--host=wasm32-unknown-emscripten \
 		--with-tcl=$(CURDIR)/$(INSTALLDIR)/lib \
 		--x-includes=$(EMX11_INCLUDES) \
 		--x-libraries=$(EMX11_LIBDIR) \
-		--disable-shared --disable-load --disable-threads \
-		--disable-xft
+		--disable-shared --disable-load --disable-threads
 	# Strip optimisation flags the configure injects (same hack as Tcl's
 	# config target) and make sure em-x11 headers win over anything the
 	# configure probe stuck into X11_INCLUDES.
