@@ -14,19 +14,6 @@ wacl.runTcl(`
   frame .sep -height 2 -relief sunken -bd 1
   pack  .sep  -fill x -padx 8 -pady 2
 
-  # Direct system-font usage. The em-x11 Xft layer pipes any vendor
-  # family straight to CSS, with a generic fallback appended, so the
-  # browser picks whatever the OS has installed.
-  label .yh   -text {Microsoft YaHei sample — quick brown fox} \
-              -font {{Microsoft YaHei} 12} -pady 2
-  label .mono -text {const greeting = "monospace"; // Cascadia Code} \
-              -font {{Cascadia Code} 11} -pady 2
-  label .ser  -text {Georgia serif sample — quick brown fox} \
-              -font {Georgia 12 italic} -pady 2
-  label .heavy -text {Bold sample} \
-              -font {Helvetica 13 bold}
-  pack .yh .mono .ser .heavy -anchor w -padx 8
-
   frame .row1
   label  .row1.l -text {Name:} -width 8 -anchor e
   entry  .row1.e -textvariable ::name -width 18
